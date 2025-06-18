@@ -13,6 +13,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { parse } from 'node:url';
+import { z } from 'zod/v4';
 
 /**
  * Scryfall API references:
@@ -31,42 +32,126 @@ import { parse } from 'node:url';
  * Each tool returns data in JSON format as a single text field.
  */
 
-interface ScryfallError {
-  object: string; // "error"
-  code: string; // "not_found", etc.
-  status: number; // HTTP status code
-  details: string; // Description
-  type?: string; // "ambiguous", etc.
-  warnings?: string[];
-}
+const ScryfallErrorSchema = z
+  .object({
+    object: z.literal('error'),
+    code: z
+      .string()
+      .describe('A computer-friendly string representing the appropriate HTTP status code'),
+    status: z.number().describe('An integer HTTP status code for this error'),
+    details: z.string().describe('A human-readable string explaining the error'),
+    type: z
+      .string()
+      .nullable()
+      .describe(
+        'A computer-friendly string that provides additional context for the main error. For example, an endpoint many generate HTTP 404 errors for different kinds of input. This field will provide a label for the specific kind of 404 failure, such as ambiguous'
+      ),
+    warnings: z
+      .array(z.string())
+      .nullable()
+      .describe(
+        'If your input also generated non-failure warnings, they will be provided as human-readable strings in this array'
+      ),
+  })
+  .describe('An error object returned by Scryfall');
+
+type ScryfallError = z.infer<typeof ScryfallErrorSchema>;
+
+// Card Face schema for multiface cards
+const CardFaceSchema = z.object({
+  name: z.string().describe('The name of this particular face'),
+  mana_cost: z
+    .string()
+    .describe(
+      'The mana cost for this face. This value will be any empty string "" if the cost is absent'
+    ),
+  cmc: z.number().describe('The mana value of this particular face'),
+  type_line: z.string().describe('The type line of this particular face'),
+  oracle_text: z.string().describe('The Oracle text for this face, if any'),
+  defense: z.string().nullable().describe("This face's defense, if any"),
+  loyalty: z.string().nullable().describe("This face's loyalty, if any"),
+  power: z
+    .string()
+    .nullable()
+    .describe(
+      "This face's power, if any. Note that some cards have powers that are not numeric, such as *"
+    ),
+  toughness: z.string().nullable().describe("This face's toughness, if any"),
+});
 
 // Scryfall Card object (abbreviated shape)
-interface ScryfallCard {
-  object: 'card';
-  id: string; // Scryfall ID
-  name: string;
-  mana_cost: string;
-  type_line: string;
-  oracle_text: string;
-  set: string;
-  set_name: string;
-  collector_number: string;
-  // More fields omitted; see https://scryfall.com/docs/api/cards
-  prices: {
-    usd?: string | null;
-    usd_foil?: string | null;
-    eur?: string | null;
-    tix?: string | null;
-  };
-}
+const ScryfallCardSchema = z.object({
+  object: z.literal('card').describe('A content type for this object, always "card"'),
+  id: z.string().describe("A unique ID for this card in Scryfall's database"),
+  name: z
+    .string()
+    .describe(
+      'The name of this card. If this card has multiple faces, this field will contain both names separated by ␣//␣'
+    ),
+  mana_cost: z
+    .string()
+    .describe(
+      'The mana cost for this card. This value will be any empty string "" if the cost is absent. Remember that per the game rules, a missing mana cost and a mana cost of {0} are different values'
+    ),
+  cmc: z
+    .number()
+    .describe("The card's mana value. Note that some funny cards have fractional mana costs"),
+  color_identity: z.array(z.string()).describe("This card's color identity"),
+  type_line: z.string().describe('The type line of this card'),
+  oracle_text: z.string().describe('The Oracle text for this card, if any'),
+  defense: z.string().nullable().describe("This card's defense, if any"),
+  loyalty: z.string().nullable().describe("This card's loyalty, if any"),
+  power: z
+    .string()
+    .nullable()
+    .describe(
+      "This card's power, if any. Note that some cards have powers that are not numeric, such as *"
+    ),
+  toughness: z.string().nullable().describe("This card's toughness, if any"),
+  game_changer: z
+    .boolean()
+    .nullable()
+    .describe('True if this card is on the Commander Game Changer list'),
+  produced_mana: z
+    .array(z.string())
+    .nullable()
+    .describe('Colors of mana that this card could produce'),
+  set: z.string().describe("This card's set code"),
+  set_name: z.string().describe("This card's full set name"),
+  collector_number: z.string().describe("This card's collector number"),
+  rarity: z
+    .string()
+    .describe("This card's rarity. One of common, uncommon, rare, special, mythic, or bonus"),
+  card_faces: z
+    .array(CardFaceSchema)
+    .nullable()
+    .describe('An array of Card Face objects, if this card is multifaced'),
+  prices: z
+    .object({
+      usd: z.string().nullable().optional().describe('The price of this card in USD'),
+      usd_foil: z.string().nullable().optional().describe('The price of this card in USD (foil)'),
+      eur: z.string().nullable().optional().describe('The price of this card in EUR'),
+      tix: z.string().nullable().optional().describe('The price of this card in MTGO tickets'),
+    })
+    .describe('An object containing daily price information for this card'),
+});
+
+type ScryfallCard = z.infer<typeof ScryfallCardSchema>;
 
 // Scryfall Ruling object
-interface ScryfallRuling {
-  object: 'ruling';
-  source: string;
-  published_at: string;
-  comment: string;
-}
+const ScryfallRulingSchema = z.object({
+  object: z.literal('ruling').describe('A content type for this object, always ruling'),
+  oracle_id: z.string().describe('The Oracle ID of the card this ruling is associated with'),
+  source: z
+    .string()
+    .describe(
+      'A computer-readable string indicating which company produced this ruling, either wotc or scryfall'
+    ),
+  published_at: z.string().describe('The date when the ruling or note was published'),
+  comment: z.string().describe('The text of the ruling'),
+});
+
+type ScryfallRuling = z.infer<typeof ScryfallRulingSchema>;
 
 // Tools definitions
 const SEARCH_CARDS_TOOL: Tool = {
