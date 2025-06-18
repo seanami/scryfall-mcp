@@ -1,19 +1,27 @@
 #!/usr/bin/env node
+import fetch, { Response } from 'node-fetch';
+import { IncomingMessage, ServerResponse, createServer } from 'node:http';
+import { parse } from 'node:url';
+import yargs from 'yargs';
+import { hideBin } from 'yargs/helpers';
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
-import fetch, { Response } from 'node-fetch';
-import yargs from 'yargs';
-import { hideBin } from 'yargs/helpers';
-import { createServer, IncomingMessage, ServerResponse } from 'node:http';
-import { parse } from 'node:url';
-import { z } from 'zod/v4';
+
+import {
+  ScryfallCardListSchema,
+  ScryfallCardSchema,
+  renderCard,
+  renderCardList,
+} from './src/scryfall/card';
+import { ScryfallError } from './src/scryfall/error';
+import { ScryfallRulingListSchema, renderRulingList } from './src/scryfall/ruling';
 
 /**
  * Scryfall API references:
@@ -32,133 +40,12 @@ import { z } from 'zod/v4';
  * Each tool returns data in JSON format as a single text field.
  */
 
-const ScryfallErrorSchema = z
-  .object({
-    object: z.literal('error'),
-    code: z
-      .string()
-      .describe('A computer-friendly string representing the appropriate HTTP status code'),
-    status: z.number().describe('An integer HTTP status code for this error'),
-    details: z.string().describe('A human-readable string explaining the error'),
-    type: z
-      .string()
-      .nullable()
-      .describe(
-        'A computer-friendly string that provides additional context for the main error. For example, an endpoint many generate HTTP 404 errors for different kinds of input. This field will provide a label for the specific kind of 404 failure, such as ambiguous'
-      ),
-    warnings: z
-      .array(z.string())
-      .nullable()
-      .describe(
-        'If your input also generated non-failure warnings, they will be provided as human-readable strings in this array'
-      ),
-  })
-  .describe('An error object returned by Scryfall');
-
-type ScryfallError = z.infer<typeof ScryfallErrorSchema>;
-
-// Card Face schema for multiface cards
-const CardFaceSchema = z.object({
-  name: z.string().describe('The name of this particular face'),
-  mana_cost: z
-    .string()
-    .describe(
-      'The mana cost for this face. This value will be any empty string "" if the cost is absent'
-    ),
-  cmc: z.number().describe('The mana value of this particular face'),
-  type_line: z.string().describe('The type line of this particular face'),
-  oracle_text: z.string().describe('The Oracle text for this face, if any'),
-  defense: z.string().nullable().describe("This face's defense, if any"),
-  loyalty: z.string().nullable().describe("This face's loyalty, if any"),
-  power: z
-    .string()
-    .nullable()
-    .describe(
-      "This face's power, if any. Note that some cards have powers that are not numeric, such as *"
-    ),
-  toughness: z.string().nullable().describe("This face's toughness, if any"),
-});
-
-// Scryfall Card object (abbreviated shape)
-const ScryfallCardSchema = z.object({
-  object: z.literal('card').describe('A content type for this object, always "card"'),
-  id: z.string().describe("A unique ID for this card in Scryfall's database"),
-  name: z
-    .string()
-    .describe(
-      'The name of this card. If this card has multiple faces, this field will contain both names separated by ␣//␣'
-    ),
-  mana_cost: z
-    .string()
-    .describe(
-      'The mana cost for this card. This value will be any empty string "" if the cost is absent. Remember that per the game rules, a missing mana cost and a mana cost of {0} are different values'
-    ),
-  cmc: z
-    .number()
-    .describe("The card's mana value. Note that some funny cards have fractional mana costs"),
-  color_identity: z.array(z.string()).describe("This card's color identity"),
-  type_line: z.string().describe('The type line of this card'),
-  oracle_text: z.string().describe('The Oracle text for this card, if any'),
-  defense: z.string().nullable().describe("This card's defense, if any"),
-  loyalty: z.string().nullable().describe("This card's loyalty, if any"),
-  power: z
-    .string()
-    .nullable()
-    .describe(
-      "This card's power, if any. Note that some cards have powers that are not numeric, such as *"
-    ),
-  toughness: z.string().nullable().describe("This card's toughness, if any"),
-  game_changer: z
-    .boolean()
-    .nullable()
-    .describe('True if this card is on the Commander Game Changer list'),
-  produced_mana: z
-    .array(z.string())
-    .nullable()
-    .describe('Colors of mana that this card could produce'),
-  set: z.string().describe("This card's set code"),
-  set_name: z.string().describe("This card's full set name"),
-  collector_number: z.string().describe("This card's collector number"),
-  rarity: z
-    .string()
-    .describe("This card's rarity. One of common, uncommon, rare, special, mythic, or bonus"),
-  card_faces: z
-    .array(CardFaceSchema)
-    .nullable()
-    .describe('An array of Card Face objects, if this card is multifaced'),
-  prices: z
-    .object({
-      usd: z.string().nullable().optional().describe('The price of this card in USD'),
-      usd_foil: z.string().nullable().optional().describe('The price of this card in USD (foil)'),
-      eur: z.string().nullable().optional().describe('The price of this card in EUR'),
-      tix: z.string().nullable().optional().describe('The price of this card in MTGO tickets'),
-    })
-    .describe('An object containing daily price information for this card'),
-});
-
-type ScryfallCard = z.infer<typeof ScryfallCardSchema>;
-
-// Scryfall Ruling object
-const ScryfallRulingSchema = z.object({
-  object: z.literal('ruling').describe('A content type for this object, always ruling'),
-  oracle_id: z.string().describe('The Oracle ID of the card this ruling is associated with'),
-  source: z
-    .string()
-    .describe(
-      'A computer-readable string indicating which company produced this ruling, either wotc or scryfall'
-    ),
-  published_at: z.string().describe('The date when the ruling or note was published'),
-  comment: z.string().describe('The text of the ruling'),
-});
-
-type ScryfallRuling = z.infer<typeof ScryfallRulingSchema>;
-
 // Tools definitions
 const SEARCH_CARDS_TOOL: Tool = {
   name: 'search_cards',
   description:
     "Search for MTG cards by a text query, e.g. 'oracle text includes: draw cards'. " +
-    'Returns a list of matching cards (with basic fields: name, set, collector_number, ID). ' +
+    'Returns a list of matching cards with fields as Markdown, including their Scryfall IDs. ' +
     'If no matches are found, returns an error message from Scryfall.',
   inputSchema: {
     type: 'object',
@@ -175,7 +62,7 @@ const SEARCH_CARDS_TOOL: Tool = {
 const GET_CARD_BY_ID_TOOL: Tool = {
   name: 'get_card_by_id',
   description:
-    'Retrieve a card by its Scryfall ID (a 36-char UUID). Returns the card data in JSON.',
+    'Retrieve a card by its Scryfall ID (a 36-char UUID). Returns the card data as Markdown.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -191,7 +78,7 @@ const GET_CARD_BY_ID_TOOL: Tool = {
 const GET_CARD_BY_NAME_TOOL: Tool = {
   name: 'get_card_by_name',
   description:
-    "Retrieve a card by its exact English name, e.g. 'Black Lotus'. Returns the card data in JSON. " +
+    "Retrieve a card by its exact English name, e.g. 'Black Lotus'. Returns the card data as Markdown, including its Scryfall ID. " +
     'If multiple cards share that exact name, Scryfall returns one (usually the most relevant printing).',
   inputSchema: {
     type: 'object',
@@ -208,7 +95,7 @@ const GET_CARD_BY_NAME_TOOL: Tool = {
 const GET_CARDS_BY_NAMES_TOOL: Tool = {
   name: 'get_cards_by_names',
   description:
-    "Retrieve multiple cards by their exact names. Returns an array of card objects, with 'Not found' entries for any names that couldn't be found. " +
+    'Retrieve multiple cards by their exact names. Returns a Markdown string for each card, including their Scryfall IDs. ' +
     'All requests are made in parallel for better performance, so use this when you need to get multiple cards at once.',
   inputSchema: {
     type: 'object',
@@ -228,7 +115,7 @@ const GET_CARDS_BY_NAMES_TOOL: Tool = {
 const RANDOM_CARD_TOOL: Tool = {
   name: 'random_card',
   description:
-    'Retrieve a random Magic card from Scryfall. Returns JSON data for that random card.',
+    'Retrieve a random Magic card from Scryfall. Returns data for that random card as Markdown.',
   inputSchema: {
     type: 'object',
     properties: {},
@@ -239,49 +126,17 @@ const RANDOM_CARD_TOOL: Tool = {
 const GET_RULINGS_TOOL: Tool = {
   name: 'get_rulings',
   description:
-    'Retrieve official rulings for a specified card by Scryfall ID or Oracle ID. ' +
-    "Returns an array of rulings. Each ruling has a 'published_at' date and a 'comment' field.",
+    'Retrieve official rulings for a specified card by Scryfall ID. ' +
+    'Returns list of rulings as Markdown. Rulings can help to understand how a card works in the game.',
   inputSchema: {
     type: 'object',
     properties: {
       id: {
         type: 'string',
-        description: "A Scryfall ID or Oracle ID. Example: 'c09c71fb-7acb-4ffb-a47b-8961a0cf4990'",
+        description: "A Scryfall ID. Example: 'c09c71fb-7acb-4ffb-a47b-8961a0cf4990'",
       },
     },
     required: ['id'],
-  },
-};
-
-const GET_PRICES_BY_ID_TOOL: Tool = {
-  name: 'get_prices_by_id',
-  description:
-    'Retrieve price information for a card by its Scryfall ID. Returns JSON with usd, usd_foil, eur, tix, etc.',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      id: {
-        type: 'string',
-        description: 'Scryfall ID of the card',
-      },
-    },
-    required: ['id'],
-  },
-};
-
-const GET_PRICES_BY_NAME_TOOL: Tool = {
-  name: 'get_prices_by_name',
-  description:
-    'Retrieve price information for a card by its exact name. Returns JSON with usd, usd_foil, eur, tix, etc.',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      name: {
-        type: 'string',
-        description: 'Exact card name',
-      },
-    },
-    required: ['name'],
   },
 };
 
@@ -293,12 +148,12 @@ const SCRYFALL_TOOLS = [
   GET_CARDS_BY_NAMES_TOOL,
   RANDOM_CARD_TOOL,
   GET_RULINGS_TOOL,
-  GET_PRICES_BY_ID_TOOL,
-  GET_PRICES_BY_NAME_TOOL,
 ] as const;
 
 // Helper to handle Scryfall responses
-async function handleScryfallResponse(response: Response) {
+async function handleScryfallResponse(
+  response: Response
+): Promise<{ isError: true; error: string } | { isError: false; data: unknown }> {
   if (!response.ok) {
     // Attempt to parse Scryfall error
     let errorObj: ScryfallError | null = null;
@@ -309,22 +164,12 @@ async function handleScryfallResponse(response: Response) {
     }
     if (errorObj && errorObj.object === 'error') {
       return {
-        content: [
-          {
-            type: 'text',
-            text: `Scryfall error: ${errorObj.details} (code=${errorObj.code}, status=${errorObj.status})`,
-          },
-        ],
+        error: `Scryfall error: ${errorObj.details} (code=${errorObj.code}, status=${errorObj.status})`,
         isError: true,
       };
     } else {
       return {
-        content: [
-          {
-            type: 'text',
-            text: `HTTP error ${response.status}: ${response.statusText}`,
-          },
-        ],
+        error: `HTTP error ${response.status}: ${response.statusText}`,
         isError: true,
       };
     }
@@ -332,152 +177,116 @@ async function handleScryfallResponse(response: Response) {
   // If okay, parse JSON
   const data = await response.json();
   return {
-    content: [
-      {
-        type: 'text',
-        text: JSON.stringify(data, null, 2),
-      },
-    ],
+    data,
     isError: false,
   };
+}
+
+// MCP helpers
+function mcpError(error: string) {
+  return {
+    content: [{ type: 'text', text: error }],
+    isError: true,
+  };
+}
+
+function mcpText(text: string) {
+  return {
+    content: [{ type: 'text', text }],
+    isError: false,
+  };
+}
+
+function mcpCombinedTextOrError(
+  results: (ReturnType<typeof mcpText> | ReturnType<typeof mcpError>)[]
+) {
+  const errors = results.filter(result => result.isError);
+  if (errors.length > 0) {
+    return { content: errors.map(error => error.content), isError: true };
+  }
+  return { content: results.map(result => result.content), isError: false };
 }
 
 // Actual call handlers
 async function handleSearchCards(query: string) {
   const url = `https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}`;
-  const response = await fetch(url);
-  return handleScryfallResponse(response);
+  const response = await handleScryfallResponse(await fetch(url));
+  if (response.isError) {
+    return mcpError(response.error);
+  }
+  const cardListResult = await ScryfallCardListSchema.safeParseAsync(response.data);
+  if (!cardListResult.success) {
+    return mcpError(`Invalid response from Scryfall: ${cardListResult.error.message}`);
+  }
+  // TODO: Handle pagination
+  const cardList = cardListResult.data;
+  const renderedCards = renderCardList(cardList, { depth: 1 });
+  return mcpText(renderedCards);
 }
 
 async function handleGetCardById(id: string) {
   const url = `https://api.scryfall.com/cards/${encodeURIComponent(id)}`;
-  const response = await fetch(url);
-  return handleScryfallResponse(response);
+  const response = await handleScryfallResponse(await fetch(url));
+  if (response.isError) {
+    return mcpError(response.error);
+  }
+  const cardResult = await ScryfallCardSchema.safeParseAsync(response.data);
+  if (!cardResult.success) {
+    return mcpError(`Invalid response from Scryfall: ${cardResult.error.message}`);
+  }
+  const card = cardResult.data;
+  const renderedCard = renderCard(card, { depth: 1 });
+  return mcpText(renderedCard);
 }
 
 async function handleGetCardByName(name: string) {
-  // Tilde in URL means 'exact' mode for the card name
   const url = `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}`;
-  const response = await fetch(url);
-  return handleScryfallResponse(response);
+  const response = await handleScryfallResponse(await fetch(url));
+  if (response.isError) {
+    return mcpError(response.error);
+  }
+  const cardResult = await ScryfallCardSchema.safeParseAsync(response.data);
+  if (!cardResult.success) {
+    return mcpError(`Invalid response from Scryfall: ${cardResult.error.message}`);
+  }
+  const card = cardResult.data;
+  const renderedCard = renderCard(card, { depth: 1 });
+  return mcpText(renderedCard);
+}
+
+async function handleGetCardsByNames(names: string[]) {
+  const results = await Promise.all(names.map(handleGetCardByName));
+  return mcpCombinedTextOrError(results);
 }
 
 async function handleRandomCard() {
   const url = 'https://api.scryfall.com/cards/random';
-  const response = await fetch(url);
-  return handleScryfallResponse(response);
+  const response = await handleScryfallResponse(await fetch(url));
+  if (response.isError) {
+    return mcpError(response.error);
+  }
+  const cardResult = await ScryfallCardSchema.safeParseAsync(response.data);
+  if (!cardResult.success) {
+    return mcpError(`Invalid response from Scryfall: ${cardResult.error.message}`);
+  }
+  const card = cardResult.data;
+  const renderedCard = renderCard(card, { depth: 1 });
+  return mcpText(renderedCard);
 }
 
 async function handleGetRulings(id: string) {
-  // Scryfall docs: /cards/{id}/rulings
-  // Also works with /cards/{oracle_id}/rulings
   const url = `https://api.scryfall.com/cards/${encodeURIComponent(id)}/rulings`;
-  const response = await fetch(url);
-  return handleScryfallResponse(response);
-}
-
-async function handleGetPricesById(id: string) {
-  const url = `https://api.scryfall.com/cards/${encodeURIComponent(id)}`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    return handleScryfallResponse(response);
+  const response = await handleScryfallResponse(await fetch(url));
+  if (response.isError) {
+    return mcpError(response.error);
   }
-  const data = (await response.json()) as ScryfallCard;
-
-  if (!data.prices) {
-    return {
-      content: [
-        {
-          type: 'text',
-          text: 'No price information found for this card.',
-        },
-      ],
-      isError: false,
-    };
+  const rulingListResult = await ScryfallRulingListSchema.safeParseAsync(response.data);
+  if (!rulingListResult.success) {
+    return mcpError(`Invalid response from Scryfall: ${rulingListResult.error.message}`);
   }
-
-  return {
-    content: [
-      {
-        type: 'text',
-        text: JSON.stringify(data.prices, null, 2),
-      },
-    ],
-    isError: false,
-  };
-}
-
-async function handleGetPricesByName(name: string) {
-  const url = `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    return handleScryfallResponse(response);
-  }
-  const data = (await response.json()) as ScryfallCard;
-
-  if (!data.prices) {
-    return {
-      content: [
-        {
-          type: 'text',
-          text: 'No price information found for this card.',
-        },
-      ],
-      isError: false,
-    };
-  }
-
-  return {
-    content: [
-      {
-        type: 'text',
-        text: JSON.stringify(data.prices, null, 2),
-      },
-    ],
-    isError: false,
-  };
-}
-
-async function handleGetCardsByNames(names: string[]) {
-  // Create an array of promises for each card name
-  const cardPromises = names.map(async name => {
-    try {
-      const url = `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}`;
-      const response = await fetch(url);
-      if (!response.ok) {
-        return {
-          name,
-          status: 'not_found',
-          error: `Card not found: ${name}`,
-        };
-      }
-      const data = await response.json();
-      return {
-        name,
-        status: 'found',
-        data,
-      };
-    } catch (error) {
-      return {
-        name,
-        status: 'error',
-        error: `Error fetching card ${name}: ${(error as Error).message}`,
-      };
-    }
-  });
-
-  // Wait for all requests to complete
-  const results = await Promise.all(cardPromises);
-
-  return {
-    content: [
-      {
-        type: 'text',
-        text: JSON.stringify(results, null, 2),
-      },
-    ],
-    isError: false,
-  };
+  const rulingList = rulingListResult.data;
+  const renderedRulings = renderRulingList(rulingList, { depth: 1 });
+  return mcpText(renderedRulings);
 }
 
 // A map of sessionId -> { transport, server } for SSE connections
@@ -528,14 +337,6 @@ function createScryfallServer() {
         case 'get_rulings': {
           const { id } = args as { id: string };
           return await handleGetRulings(id);
-        }
-        case 'get_prices_by_id': {
-          const { id } = args as { id: string };
-          return await handleGetPricesById(id);
-        }
-        case 'get_prices_by_name': {
-          const { name } = args as { name: string };
-          return await handleGetPricesByName(name);
         }
         default:
           return {
