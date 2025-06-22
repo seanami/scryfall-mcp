@@ -9,6 +9,8 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for in
 This repo is forked from [cryppadotta/scryfall-mcp](https://github.com/cryppadotta/scryfall-mcp), and I've made some improvements over the original:
 
 - Added a `get_cards_by_names` tool for more efficient parallel querying of many cards at once
+- Added Scryfall response validation and TypeScript types via `zod`
+- Added nicer Markdown-based templates for the info returned to the LLM, to reduce the number of tokens needed
 
 ## Features
 
