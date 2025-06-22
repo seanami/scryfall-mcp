@@ -14,7 +14,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc && shx chmod +x dist/*.js",
+    "build": "tsc && shx chmod +x dist/*.js && shx cp -r src/scryfall/*.hbs dist/src/scryfall/",
     "prepare": "npm run build",
     "watch": "tsc --watch",
     "dev": "NODE_NO_WARNINGS=1 tsx watch index.ts",
