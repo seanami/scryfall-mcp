@@ -197,16 +197,6 @@ function mcpText(text: string) {
   };
 }
 
-function mcpCombinedTextOrError(
-  results: (ReturnType<typeof mcpText> | ReturnType<typeof mcpError>)[]
-) {
-  const errors = results.filter(result => result.isError);
-  if (errors.length > 0) {
-    return { content: errors.map(error => error.content), isError: true };
-  }
-  return { content: results.map(result => result.content), isError: false };
-}
-
 // Actual call handlers
 async function handleSearchCards(query: string) {
   const url = `https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}`;
@@ -255,8 +245,43 @@ async function handleGetCardByName(name: string) {
 }
 
 async function handleGetCardsByNames(names: string[]) {
-  const results = await Promise.all(names.map(handleGetCardByName));
-  return mcpCombinedTextOrError(results);
+  const results = await Promise.all(
+    names.map(async name => {
+      try {
+        const url = `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}`;
+        const response = await handleScryfallResponse(await fetch(url));
+        if (response.isError) {
+          return { success: false, error: response.error, name };
+        }
+        const cardResult = await ScryfallCardSchema.safeParseAsync(response.data);
+        if (!cardResult.success) {
+          return {
+            success: false,
+            error: `Invalid response from Scryfall: ${cardResult.error.message}`,
+            name,
+          };
+        }
+        const card = cardResult.data;
+        const renderedCard = renderCard(card, { depth: 1 });
+        return { success: true, card: renderedCard, name };
+      } catch (err) {
+        return { success: false, error: (err as Error).message, name };
+      }
+    })
+  );
+
+  const errors = results.filter(result => !result.success);
+  const successes = results.filter(result => result.success);
+
+  if (errors.length > 0) {
+    const errorMessages = errors
+      .map(error => `Error fetching "${error.name}": ${error.error}`)
+      .join('\n');
+    return mcpError(errorMessages);
+  }
+
+  const combinedText = successes.map(result => result.card).join('\n\n');
+  return mcpText(combinedText);
 }
 
 async function handleRandomCard() {
