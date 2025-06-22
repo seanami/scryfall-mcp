@@ -19,9 +19,9 @@ import {
   ScryfallCardSchema,
   renderCard,
   renderCardList,
-} from './src/scryfall/card';
-import { ScryfallError } from './src/scryfall/error';
-import { ScryfallRulingListSchema, renderRulingList } from './src/scryfall/ruling';
+} from './src/scryfall/card.js';
+import { ScryfallError } from './src/scryfall/error.js';
+import { ScryfallRulingListSchema, renderRulingList } from './src/scryfall/ruling.js';
 
 /**
  * Scryfall API references:

@@ -1,4 +1,4 @@
-import { ScryfallList, ScryfallListSchema } from './list';
+import { ScryfallList, ScryfallListSchema } from './list.js';
 
 describe('ScryfallList', () => {
   describe('validation', () => {

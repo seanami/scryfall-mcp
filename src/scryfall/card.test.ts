@@ -1,11 +1,11 @@
-import { TemplateContext } from '../templates';
+import { TemplateContext } from '../templates/types.js';
 import {
   ScryfallCard,
   ScryfallCardList,
   ScryfallCardSchema,
   renderCard,
   renderCardList,
-} from './card';
+} from './card.js';
 
 describe('ScryfallCard', () => {
   describe('validation', () => {

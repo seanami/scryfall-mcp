@@ -3,12 +3,7 @@ import Handlebars from 'handlebars';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import './helpers';
-
-export type TemplateContext = {
-  // Depth of this template in the hierarchy of headings, starting at 1.
-  depth: number;
-};
+import './helpers.js';
 
 // Cache for compiled templates
 const templateCache: Map<string, Handlebars.TemplateDelegate> = new Map();

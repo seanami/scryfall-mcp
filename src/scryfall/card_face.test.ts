@@ -1,5 +1,5 @@
-import { TemplateContext } from '../templates';
-import { ScryfallCardFace, ScryfallCardFaceSchema, renderCardFace } from './card_face';
+import { TemplateContext } from '../templates/types.js';
+import { ScryfallCardFace, ScryfallCardFaceSchema, renderCardFace } from './card_face.js';
 
 describe('ScryfallCardFace', () => {
   describe('validation', () => {

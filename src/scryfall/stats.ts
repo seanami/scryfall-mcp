@@ -1,7 +1,8 @@
 import Handlebars from 'handlebars';
 import { z } from 'zod/v4';
 
-import { TemplateContext, loadTemplate } from '../templates';
+import { loadTemplate } from '../templates/index.js';
+import { TemplateContext } from '../templates/types.js';
 
 export const ScryfallStatsSchema = z.object({
   power: z

@@ -1,5 +1,5 @@
-import { TemplateContext } from '../templates';
-import { ScryfallRuling, ScryfallRulingSchema, renderRuling } from './ruling';
+import { TemplateContext } from '../templates/types.js';
+import { ScryfallRuling, ScryfallRulingSchema, renderRuling } from './ruling.js';
 
 describe('ScryfallRuling', () => {
   describe('validation', () => {

@@ -1,6 +1,6 @@
 import Handlebars from 'handlebars';
 
-import { TemplateContext } from '.';
+import { TemplateContext } from './types.js';
 
 /**
  * Generate a base heading prefix for markdown, given a depth

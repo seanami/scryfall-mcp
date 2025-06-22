@@ -1,8 +1,9 @@
 import Handlebars from 'handlebars';
 import { z } from 'zod/v4';
 
-import { TemplateContext, loadTemplate } from '../templates';
-import { ScryfallListSchema } from './list';
+import { loadTemplate } from '../templates/index.js';
+import { TemplateContext } from '../templates/types.js';
+import { ScryfallListSchema } from './list.js';
 
 export const ScryfallRulingSchema = z.object({
   object: z.literal('ruling').describe('A content type for this object, always ruling'),

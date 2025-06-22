@@ -1,8 +1,9 @@
 import Handlebars from 'handlebars';
 import { z } from 'zod/v4';
 
-import { TemplateContext, loadTemplate } from '../templates';
-import { ScryfallStatsSchema } from './stats';
+import { loadTemplate } from '../templates/index.js';
+import { TemplateContext } from '../templates/types.js';
+import { ScryfallStatsSchema } from './stats.js';
 
 export const ScryfallCardFaceSchema = z
   .object({

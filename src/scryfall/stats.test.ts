@@ -1,5 +1,5 @@
-import { TemplateContext } from '../templates';
-import { ScryfallStatsSchema, renderStats } from './stats';
+import { TemplateContext } from '../templates/types.js';
+import { ScryfallStatsSchema, renderStats } from './stats.js';
 
 describe('ScryfallStats', () => {
   describe('validation', () => {

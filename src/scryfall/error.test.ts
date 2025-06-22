@@ -1,4 +1,4 @@
-import { ScryfallError, ScryfallErrorSchema } from './error';
+import { ScryfallError, ScryfallErrorSchema } from './error.js';
 
 describe('ScryfallError', () => {
   describe('validation', () => {
