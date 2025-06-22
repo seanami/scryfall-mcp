@@ -1,0 +1,30 @@
+{{heading context}} {{name}}
+
+**Set:** {{set_name}} ({{set}}) #{{collector_number}}
+**Rarity:** {{rarity}}
+
+**Mana Cost:** {{mana_cost}} (CMC: {{cmc}})
+**Type:** {{type_line}}
+
+{{#if oracle_text}}
+**Oracle Text:**
+{{oracle_text}}
+{{/if}}
+
+{{renderStats this}}
+
+{{#if card_faces}}
+## Card Faces
+
+{{#each card_faces}}
+{{renderCardFace this depth=2}}
+{{/each}}
+{{/if}}
+
+{{#if prices}}
+## Prices
+{{#if prices.usd}}- USD: ${{prices.usd}}{{/if}}
+{{#if prices.usd_foil}}- USD Foil: ${{prices.usd_foil}}{{/if}}
+{{#if prices.eur}}- EUR: €{{prices.eur}}{{/if}}
+{{#if prices.tix}}- MTGO: {{prices.tix}} tix{{/if}}
+{{/if}}

@@ -9,5 +9,10 @@
   },
   "[json]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
-  }
+  },
+  "[handlebars]": {
+    "editor.formatOnSave": false
+  },
+  "jest.runMode": "on-save",
+  "jest.jestCommandLine": "npm test --"
 }
