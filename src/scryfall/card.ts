@@ -29,11 +29,11 @@ export const ScryfallCardSchema = z
     oracle_text: z.string().describe('The Oracle text for this card, if any'),
     game_changer: z
       .boolean()
-      .nullable()
+      .nullish()
       .describe('True if this card is on the Commander Game Changer list'),
     produced_mana: z
       .array(z.string())
-      .nullable()
+      .nullish()
       .describe('Colors of mana that this card could produce'),
     set: z.string().describe("This card's set code"),
     set_name: z.string().describe("This card's full set name"),
@@ -43,14 +43,14 @@ export const ScryfallCardSchema = z
       .describe("This card's rarity. One of common, uncommon, rare, special, mythic, or bonus"),
     card_faces: z
       .array(ScryfallCardFaceSchema)
-      .nullable()
+      .nullish()
       .describe('An array of Card Face objects, if this card is multifaced'),
     prices: z
       .object({
-        usd: z.string().nullable().optional().describe('The price of this card in USD'),
-        usd_foil: z.string().nullable().optional().describe('The price of this card in USD (foil)'),
-        eur: z.string().nullable().optional().describe('The price of this card in EUR'),
-        tix: z.string().nullable().optional().describe('The price of this card in MTGO tickets'),
+        usd: z.string().nullish().describe('The price of this card in USD'),
+        usd_foil: z.string().nullish().describe('The price of this card in USD (foil)'),
+        eur: z.string().nullish().describe('The price of this card in EUR'),
+        tix: z.string().nullish().describe('The price of this card in MTGO tickets'),
       })
       .describe('An object containing daily price information for this card'),
   })

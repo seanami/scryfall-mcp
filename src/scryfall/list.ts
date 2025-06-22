@@ -7,19 +7,19 @@ export const ScryfallListSchema = z.object({
     .describe('True if this List is paginated and there is a page beyond the current page'),
   next_page: z
     .string()
-    .nullable()
+    .nullish()
     .describe(
       'If there is a page beyond the current page, this field will contain a full API URI to that page'
     ),
   total_cards: z
     .number()
-    .nullable()
+    .nullish()
     .describe(
       'If this is a list of Card objects, this field will contain the total number of cards found across all pages'
     ),
   warnings: z
     .array(z.string())
-    .nullable()
+    .nullish()
     .describe('An array of human-readable warnings issued when generating this list, as strings'),
 });
 
